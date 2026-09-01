@@ -1,0 +1,22 @@
+{
+  "id": "ocms",
+  "name": "openclaw-mesync",
+  "description": "mesync 记忆引擎的 OpenClaw 插件：决策/认知/品味三概念 + 决策因果链结构化记忆，面向 Agent 本体。",
+  "version": "0.1.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "maxContextDecisions": {
+        "type": "number",
+        "description": "注入上下文时最多带几条决策（默认 5）。"
+      }
+    }
+  },
+  "hooks": {
+    "allowConversationAccess": true
+  },
+  "contracts": {
+    "tools": ["ocms_recall", "ocms_recall_detail", "ocms_remember", "ocms_chain"]
+  }
+}

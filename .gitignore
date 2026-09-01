@@ -1,7 +1,5 @@
 node_modules/
 dist/
-lib/
 *.tsbuildinfo
-.mesync/
-.openclaw/.ocms/
 .env
+.openclaw/

@@ -29,8 +29,8 @@ export interface Chain {
 
 // ---- 读写 ----
 
-export function loadChain(cwd: string, chainName: string): Chain | null {
-  const file = path.join(resolveChainDir(cwd, chainName), 'chain.json')
+export function loadChain(agentDir: string, chainName: string): Chain | null {
+  const file = path.join(resolveChainDir(agentDir, chainName), 'chain.json')
   if (!fs.existsSync(file)) return null
   try {
     return JSON.parse(fs.readFileSync(file, 'utf-8')) as Chain
@@ -39,8 +39,8 @@ export function loadChain(cwd: string, chainName: string): Chain | null {
   }
 }
 
-export function saveChain(cwd: string, chain: Chain): void {
-  const dir = resolveChainDir(cwd, chain.chainId)
+export function saveChain(agentDir: string, chain: Chain): void {
+  const dir = resolveChainDir(agentDir, chain.chainId)
   fs.mkdirSync(dir, { recursive: true })
   const file = path.join(dir, 'chain.json')
   fs.writeFileSync(file, JSON.stringify(chain, null, 2), 'utf-8')
@@ -49,9 +49,9 @@ export function saveChain(cwd: string, chain: Chain): void {
 // ---- 链表操作 ----
 
 /** 新建一条空链 */
-export function createChain(cwd: string, chainId: string): Chain {
+export function createChain(agentDir: string, chainId: string): Chain {
   const chain: Chain = { chainId, nodes: [] }
-  saveChain(cwd, chain)
+  saveChain(agentDir, chain)
   return chain
 }
 
@@ -60,12 +60,12 @@ export function createChain(cwd: string, chainId: string): Chain {
  * 追加式：新节点 supersedes 指向被取代的旧节点，旧节点 superseded_by 指向新节点。
  */
 export function appendNode(
-  cwd: string,
+  agentDir: string,
   chainName: string,
   node: Omit<ChainNode, 'superseded_by'> & { superseded_by?: string | null },
   supersedeIds: string[] = [],
 ): Chain {
-  const chain = loadChain(cwd, chainName) ?? createChain(cwd, chainName)
+  const chain = loadChain(agentDir, chainName) ?? createChain(agentDir, chainName)
 
   // 新节点
   const newNode: ChainNode = {
@@ -85,7 +85,7 @@ export function appendNode(
   }
 
   chain.nodes.push(newNode)
-  saveChain(cwd, chain)
+  saveChain(agentDir, chain)
   return chain
 }
 
@@ -116,8 +116,8 @@ export function traceCausalChain(chain: Chain, nodeId: string): ChainNode[] {
 }
 
 /** 列出 decisions 目录下所有链（文件夹名） */
-export function listChains(cwd: string): string[] {
-  const dir = resolveDecisionsDir(cwd)
+export function listChains(agentDir: string): string[] {
+  const dir = resolveDecisionsDir(agentDir)
   if (!fs.existsSync(dir)) return []
   return fs
     .readdirSync(dir, { withFileTypes: true })

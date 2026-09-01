@@ -46,12 +46,12 @@ export function formatDecisionMarkdown(c: DecisionContent): string {
 
 /** 写决策正文到链文件夹 */
 export function writeDecisionMarkdown(
-  cwd: string,
+  agentDir: string,
   chainName: string,
   fileName: string,
   content: DecisionContent,
 ): string {
-  const dir = resolveChainDir(cwd, chainName)
+  const dir = resolveChainDir(agentDir, chainName)
   fs.mkdirSync(dir, { recursive: true })
   const file = path.join(dir, fileName)
   fs.writeFileSync(file, formatDecisionMarkdown(content), 'utf-8')
@@ -59,8 +59,8 @@ export function writeDecisionMarkdown(
 }
 
 /** 读决策正文 */
-export function readDecisionMarkdown(cwd: string, chainName: string, fileName: string): string {
-  const file = path.join(resolveChainDir(cwd, chainName), fileName)
+export function readDecisionMarkdown(agentDir: string, chainName: string, fileName: string): string {
+  const file = path.join(resolveChainDir(agentDir, chainName), fileName)
   if (!fs.existsSync(file)) return ''
   return fs.readFileSync(file, 'utf-8')
 }

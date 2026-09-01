@@ -4,7 +4,7 @@
 // 复用 dsh-mesync 已验证的三概念逻辑，增量：决策向量检索（OpenClaw 原生）+ 升维。
 
 import { definePluginEntry, buildJsonPluginConfigSchema } from 'openclaw/plugin-sdk/plugin-entry'
-import { buildTools } from './tools/index.js'
+import { buildOcmsToolFactory } from './tools/index.js'
 import { registerHooks } from './hooks/index.js'
 import { DEFAULT_CONFIG, type OcmsConfig } from './config.js'
 
@@ -30,12 +30,10 @@ export default definePluginEntry({
       maxContextDecisions: raw.maxContextDecisions ?? DEFAULT_CONFIG.maxContextDecisions,
     }
 
-    // 注册工具：ocms_recall / ocms_recall_detail / ocms_remember / ocms_chain
-    for (const tool of buildTools()) {
-      api.registerTool(tool)
-    }
+    // 注册工具（factory 形式，从 toolContext 拿 agentDir）
+    api.registerTool(buildOcmsToolFactory())
 
-    // 注册 hook：before_prompt_build（注入）+ agent_end（提取）
+    // 注册 hook：before_prompt_build（初始化 + 注入）+ agent_end（轻量提示）
     registerHooks({ api, ocmsConfig })
   },
 })

@@ -37,10 +37,10 @@ ocms 相对 dsh-mesync 的两个跃迁：
 
 ## 3. 存储架构
 
-数据落盘根目录：`.openclaw/.ocms/`
+数据落盘根目录：`.openclaw/agents/<agent-id>/.ocms/`（ocms 面向 Agent 本体，不同 agent 记忆隔离）
 
 ```
-.openclaw/.ocms/
+.openclaw/agents/<agent-id>/.ocms/
 ├── decisions/                      # 所有决策
 │   ├── <chain-name>/               # 一条链 = 一个文件夹
 │   │   ├── chain.json              # 链拓扑（JSON 数组，链表结构）
@@ -49,8 +49,10 @@ ocms 相对 dsh-mesync 的两个跃迁：
 │   └── ...
 ├── cognition/                      # 认知（Markdown）
 │   └── *.md
-└── taste/                          # 品味（Markdown）
-    └── *.md
+├── taste/                          # 品味（Markdown）
+│   └── *.md
+├── skills/                         # 提取 skill（从 templates 复制）
+└── rules/                          # 提取 rule（从 templates 复制）
 ```
 
 ### 3.1 决策（Decisions）
@@ -148,16 +150,25 @@ ocms 相对 dsh-mesync 的两个跃迁：
 OpenClaw 主回复流程
   ↓
 [before_prompt_build hook]         ← 回复前
-  └─ ocms_recall 检索相关决策（memory_search 检索 md + chain.json 过滤生效态）
-  └─ 注入决策上下文
+  ├─ 首次：初始化数据目录 + 复制 templates 到 .ocms/
+  ├─ 注入总纲（_sync_strategy.skill.md，始终注入）
+  └─ 注入当前生效决策（因果链过滤）
   ↓
-主模型回复
+主模型回复（受总纲 skill 驱动，自行判断何时提取）
   ↓
-[agent_end hook]                   ← 回复后，fire-and-forget
-  └─ 提取本轮新决策/认知/品味
-  └─ 写入门控（溯源 + 冲突检测 + 置信度）
-  └─ 决策写 md + 更新 chain.json
+[agent_end hook]                   ← 回复后（轻量，不自己做 LLM 提取）
 ```
+
+### 提取机制：skill 注入 + 主 agent 自行提取（复用 dsh-mesync）
+
+不做后台 loop，不做 agent_end 里的 LLM 门控提取。而是：
+
+1. **总纲 skill 始终注入**：讲清三概念模型 + 何时提取 + 设计原则
+2. **决策/认知/品味 skill 按需 read**：主 agent 需要时自己读
+3. **ocms_remember 工具**：决策提取的落盘出口（写 md + 更新 chain.json）
+4. **认知/品味写 md**：主 agent 用 write 工具直接写 .ocms/cognition/ 和 .ocms/taste/
+
+这样提取质量最高（主 agent 全程在上下文里），成本最低（零额外 LLM 调用），且与 mesync 已验证哲学一致。
 
 ---
 
@@ -173,15 +184,20 @@ openclaw-mesync/
 │   ├── index.ts              # 插件入口（definePluginEntry）
 │   ├── config.ts             # 配置（maxContextDecisions）
 │   ├── store/
-│   │   ├── paths.ts          # 数据路径解析
+│   │   ├── paths.ts          # 数据路径解析（.openclaw/agents/<agent-id>/.ocms/）
 │   │   ├── chain.ts          # chain.json 读写 + 链表操作
 │   │   ├── decision.ts       # 决策 md 读写
+│   │   ├── templates.ts      # 模板管理（ensure/load）
 │   │   └── index.ts
 │   ├── tools/
-│   │   └── index.ts          # ocms_recall / ocms_recall_detail / ocms_remember
+│   │   └── index.ts          # ocms_recall / recall_detail / remember / chain
 │   └── hooks/
 │       └── index.ts          # before_prompt_build + agent_end
-└── templates/                # 认知/品味规则模板
+├── templates/                # 提取 skill/rule（复制到 .ocms/）
+│   ├── skills/               # _sync_strategy / _sync_decision / _sync_taste / _sync_cognition
+│   └── rules/                # _sync_decision
+└── scripts/
+    └── copy-assets.mjs       # 复制 templates 到 dist
 ```
 
 ---
@@ -204,9 +220,9 @@ openclaw-mesync/
 
 ## 8. 待定 / 下一步
 
-- [x] 数据落盘路径：`.openclaw/.ocms/`
+- [x] 数据落盘路径：`.openclaw/agents/<agent-id>/.ocms/`
 - [x] config：只保留 `maxContextDecisions`，插件 id `ocms`
 - [x] 存储方式：Markdown 内容 + JSON 链拓扑（一条链一个文件夹）
 - [x] 向量检索：交给 OpenClaw 原生 memory_search
-- [ ] `agent_end` 提取的门控实现（轻量模型判断 vs 主模型标记）
+- [x] 提取机制：skill 注入 + 主 agent 自行提取（复用 dsh-mesync templates 升维）
 - [ ] 决策 md 如何纳入 memory_search（extraPaths 配置 or 主动索引）

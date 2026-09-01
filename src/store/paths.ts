@@ -1,29 +1,31 @@
 // store/paths — 数据路径解析
-// 数据落盘根目录：<cwd>/.openclaw/.ocms/
+//
+// 数据落盘根目录：<agentDir>/.ocms/，其中 agentDir = .openclaw/agents/<agent-id>/
+// ocms 面向 Agent 本体，不同 agent 的记忆隔离，各落在自己 agent 目录下。
 
 import * as path from 'node:path'
 
-/** 数据根目录 */
-export function resolveDataDir(cwd: string): string {
-  return path.join(cwd, '.openclaw', '.ocms')
+/** 数据根目录：<agentDir>/.ocms */
+export function resolveDataDir(agentDir: string): string {
+  return path.join(agentDir, '.ocms')
 }
 
 /** 决策目录（所有链文件夹的父目录） */
-export function resolveDecisionsDir(cwd: string): string {
-  return path.join(resolveDataDir(cwd), 'decisions')
+export function resolveDecisionsDir(agentDir: string): string {
+  return path.join(resolveDataDir(agentDir), 'decisions')
 }
 
 /** 某条链的文件夹 */
-export function resolveChainDir(cwd: string, chainName: string): string {
-  return path.join(resolveDecisionsDir(cwd), chainName)
+export function resolveChainDir(agentDir: string, chainName: string): string {
+  return path.join(resolveDecisionsDir(agentDir), chainName)
 }
 
 /** 认知目录 */
-export function resolveCognitionDir(cwd: string): string {
-  return path.join(resolveDataDir(cwd), 'cognition')
+export function resolveCognitionDir(agentDir: string): string {
+  return path.join(resolveDataDir(agentDir), 'cognition')
 }
 
 /** 品味目录 */
-export function resolveTasteDir(cwd: string): string {
-  return path.join(resolveDataDir(cwd), 'taste')
+export function resolveTasteDir(agentDir: string): string {
+  return path.join(resolveDataDir(agentDir), 'taste')
 }

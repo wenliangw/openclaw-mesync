@@ -3,5 +3,5 @@ dist/
 lib/
 *.tsbuildinfo
 .mesync/
-.ocms/
+.openclaw/.ocms/
 .env

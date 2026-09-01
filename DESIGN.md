@@ -69,14 +69,14 @@ CREATE INDEX IF NOT EXISTS idx_decisions_outcome ON decisions(outcome);
 
 认知 = Agent「世界是怎么运作的」知识/方法论。自由文本，用 Markdown 更自然，由主 agent 惰性生成/维护。
 
-- 存储：`.ocms/cognition/` 下的 Markdown（升维后不叫 wiki，叫 cognition）
+- 存储：`.openclaw/.ocms/cognition/` 下的 Markdown（升维后不叫 wiki，叫 cognition）
 - 检索：OpenClaw 原生 `memory_search`（向量）或直接 read
 
 ### 3.3 品味（Taste）→ Markdown
 
 品味 = 用户/Agent 的审美、偏好、判断倾向。同样是自由文本。
 
-- 存储：`.ocms/taste/` 下的 Markdown
+- 存储：`.openclaw/.ocms/taste/` 下的 Markdown
 - 检索：OpenClaw 原生 `memory_search` 或直接 read
 
 ---
@@ -177,4 +177,4 @@ openclaw-mesync/
 - [ ] 确认 config schema 字段（maxContextDecisions 等）
 - [ ] 确认 embedding 复用方式（复用已注册 adapter vs 自己实例化）
 - [ ] 确认 `agent_end` 提取的门控具体实现（轻量模型判断 vs 主模型标记）
-- [ ] 数据落盘路径（`.ocms/` 还是跟随 OpenClaw workspace？）
+- [x] 数据落盘路径：`.openclaw/.ocms/`（决策 SQLite + 认知/品味 Markdown 都放这里）

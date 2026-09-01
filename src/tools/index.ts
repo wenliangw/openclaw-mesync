@@ -1,51 +1,91 @@
 // tools/index — ocms 的 Agent 工具
-// ocms_recall（当前生效决策摘要，因果链过滤）
+// ocms_recall（向量检索当前生效决策，因果链过滤）
 // ocms_recall_detail（单条决策完整内容）
-// ocms_remember（手动记录决策，追加到链）
+// ocms_remember（手动记录决策，追加到链，生成 embedding）
 // ocms_chain（查看某条链的完整因果链）
 //
-// 工具用 factory 形式：从 toolContext 拿 agentDir（数据落盘目录），闭包进工具。
-// 向量检索不在这里做：决策 md 由 OpenClaw 原生 memory_search 检索。
-// ocms 工具的核心价值是「因果链过滤」——只暴露当前生效决策，隐藏被取代的旧决策。
+// 工具用 factory 形式：从 toolContext 拿 agentDir + config，闭包进工具。
+// 向量检索（路线 2 + 方案 B）：embedding 存在 chain.json 的 node 里，
+// recall 时用 OpenClaw 的 memory embedding provider 做 query embedding + 余弦检索。
+// 降级：无 embedding 配置时退化为关键词匹配。
 
 import { Type } from 'typebox'
-import type { AnyAgentTool, OpenClawPluginToolContext } from 'openclaw/plugin-sdk/plugin-entry'
+import type { AnyAgentTool, OpenClawPluginToolContext, OpenClawConfig } from 'openclaw/plugin-sdk/plugin-entry'
 import {
   loadChain,
   listChains,
   appendNode,
   getActiveNodes,
+  searchDecisionsByVector,
   readDecisionMarkdown,
   writeDecisionMarkdown,
 } from '../store/index.js'
+import { embedQuery, embedDocument } from '../embedding/index.js'
 import type { DecisionContent } from '../store/index.js'
 
-/** 工具 factory：从 toolContext 解析 agentDir，构建所有 ocms 工具 */
+/** 从决策 md 提取标题（第一行 # 后面的内容） */
+function decisionTitle(md: string, fallback: string): string {
+  return md.split('\n').find((l) => l.startsWith('# '))?.replace('# ', '') ?? fallback
+}
+
+/** 工具 factory：从 toolContext 解析 agentDir + config，构建所有 ocms 工具 */
 export function buildOcmsToolFactory() {
   return (ctx: OpenClawPluginToolContext): AnyAgentTool[] | null => {
     const agentDir = ctx.agentDir ?? null
+    const config: OpenClawConfig | undefined = ctx.config ?? ctx.runtimeConfig ?? ctx.getRuntimeConfig?.()
     if (!agentDir) return null
 
-    // ---- ocms_recall — 列出当前生效的决策摘要 ----
+    // ---- ocms_recall — 向量检索当前生效的决策摘要 ----
     const recall: AnyAgentTool = {
       name: 'ocms_recall',
       label: 'Recall decisions',
       description:
-        '列出 ocms 中「当前生效」的决策摘要（自动隐藏被取代的旧决策）。' +
-        '可选按 chain 或 query 过滤。需要看某条决策完整内容时，用 ocms_recall_detail。',
+        '检索 ocms 中「当前生效」的决策（自动隐藏被取代的旧决策）。' +
+        '支持语义向量检索（query）或按链浏览。需要看某条决策完整内容时，用 ocms_recall_detail。',
       parameters: Type.Object({
+        query: Type.Optional(Type.String({ description: '要匹配的任务/问题描述，用于语义检索相关决策。' })),
         chain: Type.Optional(Type.String({ description: '只看某条链（文件夹名），如 api-design。' })),
-        query: Type.Optional(Type.String({ description: '关键词匹配决策内容。' })),
-        limit: Type.Optional(Type.Number({ description: '最多返回几条（默认 20）。' })),
+        limit: Type.Optional(Type.Number({ description: '最多返回几条（默认 5）。' })),
       }),
       async execute(_toolCallId: string, params: unknown): Promise<any> {
-        const p = params as { chain?: string; query?: string; limit?: number }
-        const limit = p.limit ?? 20
+        const p = params as { query?: string; chain?: string; limit?: number }
+        const limit = p.limit ?? 5
         const chainNames = p.chain ? [p.chain] : listChains(agentDir)
 
+        // 向量检索路径
+        if (p.query && config) {
+          const queryVec = await embedQuery(config, p.query)
+          if (queryVec) {
+            const scored: Array<{ title: string; chainId: string; id: string; score: number }> = []
+            for (const name of chainNames) {
+              const chain = loadChain(agentDir, name)
+              if (!chain) continue
+              for (const r of searchDecisionsByVector(chain, queryVec, limit)) {
+                const md = readDecisionMarkdown(agentDir, name, r.node.markdown)
+                scored.push({
+                  title: decisionTitle(md, r.node.id),
+                  chainId: chain.chainId,
+                  id: r.node.id,
+                  score: r.score,
+                })
+              }
+            }
+            scored.sort((a, b) => b.score - a.score)
+            const top = scored.slice(0, limit)
+            if (top.length > 0) {
+              const parts = ['## Active Decisions (semantic)']
+              for (const s of top) {
+                parts.push(`- [${s.chainId}] ${s.id} · **${s.title}** (${(s.score * 100).toFixed(0)}%)`)
+              }
+              parts.push('', 'Use ocms_recall_detail to read the full rationale of a specific decision.')
+              return parts.join('\n')
+            }
+          }
+        }
+
+        // 降级 / 浏览路径：关键词匹配 + 因果链过滤
         const parts: string[] = []
         let count = 0
-
         for (const name of chainNames) {
           const chain = loadChain(agentDir, name)
           if (!chain) continue
@@ -60,8 +100,7 @@ export function buildOcmsToolFactory() {
           for (const node of active) {
             if (count >= limit) break
             const md = readDecisionMarkdown(agentDir, name, node.markdown)
-            const title = md.split('\n').find((l) => l.startsWith('# '))?.replace('# ', '') ?? node.id
-            parts.push(`- [${chain.chainId}] ${node.id} · **${title}**`)
+            parts.push(`- [${chain.chainId}] ${node.id} · **${decisionTitle(md, node.id)}**`)
             count++
           }
         }
@@ -101,7 +140,7 @@ export function buildOcmsToolFactory() {
       },
     }
 
-    // ---- ocms_remember — 手动记录决策（追加到链） ----
+    // ---- ocms_remember — 手动记录决策（追加到链 + 生成 embedding） ----
     const remember: AnyAgentTool = {
       name: 'ocms_remember',
       label: 'Record decision',
@@ -150,7 +189,13 @@ export function buildOcmsToolFactory() {
         // 写决策正文
         writeDecisionMarkdown(agentDir, args.chain, fileName, content)
 
-        // 更新链拓扑
+        // 趁热生成 embedding（decision + rationale 的语义）
+        let embedding: number[] | null = null
+        if (config) {
+          embedding = await embedDocument(config, `${args.decision} ${args.rationale}`)
+        }
+
+        // 更新链拓扑（含 embedding）
         appendNode(
           agentDir,
           args.chain,
@@ -162,11 +207,12 @@ export function buildOcmsToolFactory() {
             caused_by: causedBy,
             supersedes: supersedes,
             scopes: [],
+            embedding,
           },
           supersedes,
         )
 
-        return `✅ Decision recorded in chain "${args.chain}": **${args.decision}** (${id})`
+        return `✅ Decision recorded in chain "${args.chain}": **${args.decision}** (${id})${embedding ? ' [embedded]' : ''}`
       },
     }
 

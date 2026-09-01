@@ -20,6 +20,8 @@ export interface ChainNode {
   supersedes: string[]
   superseded_by: string | null
   scopes: string[]
+  /** 决策向量（浮点数组），用于向量检索。未生成时为 null。 */
+  embedding?: number[] | null
 }
 
 export interface Chain {
@@ -113,6 +115,57 @@ export function traceCausalChain(chain: Chain, nodeId: string): ChainNode[] {
   }
   walk(nodeId)
   return result
+}
+
+/** 更新某个节点的 embedding 向量 */
+export function updateNodeEmbedding(
+  agentDir: string,
+  chainName: string,
+  nodeId: string,
+  embedding: number[],
+): void {
+  const chain = loadChain(agentDir, chainName)
+  if (!chain) return
+  const node = chain.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  node.embedding = embedding
+  saveChain(agentDir, chain)
+}
+
+/** 余弦相似度 */
+export function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) return 0
+  let dot = 0
+  let na = 0
+  let nb = 0
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i]
+    na += a[i] * a[i]
+    nb += b[i] * b[i]
+  }
+  if (na === 0 || nb === 0) return 0
+  return dot / (Math.sqrt(na) * Math.sqrt(nb))
+}
+
+/**
+ * 向量检索：对当前生效的决策做余弦相似度排序。
+ * 只在当前生效决策（superseded_by = null）里检索，天然隐藏被取代的旧决策。
+ */
+export function searchDecisionsByVector(
+  chain: Chain,
+  queryVector: number[],
+  limit = 5,
+): Array<{ node: ChainNode; score: number }> {
+  const active = getActiveNodes(chain)
+  const scored = active
+    .map((node) => {
+      if (!node.embedding || node.embedding.length === 0) return { node, score: -1 }
+      return { node, score: cosineSimilarity(queryVector, node.embedding) }
+    })
+    .filter((r) => r.score >= 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+  return scored
 }
 
 /** 列出 decisions 目录下所有链（文件夹名） */

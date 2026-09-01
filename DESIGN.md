@@ -27,9 +27,9 @@ ocms 相对 dsh-mesync 的两个跃迁：
 |------|------|------|
 | 存储方式 | **Markdown 存内容 + JSON 存链拓扑**（方案 C） | 符合 OpenClaw「记忆即文件」哲学；零原生编译依赖 |
 | 决策链 | **一条链 = 一个文件夹** | 相关决策物理聚在一起；`chain.json` 记录链结构 |
-| 向量检索 | **交给 OpenClaw 原生 `memory_search`** | 决策是 md 文件，向量检索白送，不自建 embedding |
-| 检索时机 | **Active Memory + 自定义 recall 工具** | 主回复前阻塞检索，注入相关决策 |
-| 更新时机 | **`agent_end` 钩子** | 任务结束后自动提取决策/认知/品味 |
+| 向量检索 | **路线 2 + 方案 B：ocms 自建向量检索，embedding 存在 chain.json** | 完全自控，为 mmos 探路；复用 OpenClaw embedding（零重复配置）；绕开 extraPaths 静态配置的坑 |
+| 检索时机 | **ocms_recall 工具**（向量检索 + 因果链过滤） | 主 agent 自行调用；before_prompt_build 注入当前生效决策 |
+| 更新时机 | **skill 注入 + 主 agent 自行提取** | 复用 dsh-mesync 验证哲学；不做 agent_end LLM 提取 |
 | SQLite | **不用** | OpenClaw 插件依赖须纯 JS/TS，better-sqlite3 原生编译不友好 |
 | 开发身份 | **wenliangw（糖豆）全权** | 糖豆独揽项目，不走「小明开发 + 糖豆 review」双人流程 |
 
@@ -85,11 +85,14 @@ ocms 相对 dsh-mesync 的两个跃迁：
       "caused_by": ["decision-001"],
       "supersedes": ["decision-001"],
       "superseded_by": null,
-      "scopes": []
+      "scopes": [],
+      "embedding": [0.123, -0.456, ...]
     }
   ]
 }
 ```
+
+> `embedding` 字段：决策向量（浮点数组），`ocms_remember` 记录时趁热生成。`ocms_recall` 用它做余弦相似度检索。
 
 #### 链表特性管理
 
@@ -102,6 +105,13 @@ ocms 相对 dsh-mesync 的两个跃迁：
 | 追加式 | 不覆盖历史 | 新决策 `supersedes` 指向旧决策，旧决策 `superseded_by` 指向新决策 |
 
 **「当前生效决策」** = `superseded_by: null` 且 `outcome: adopted` 的节点。
+
+#### 向量检索（路线 2 + 方案 B）
+
+- **embedding 生成**：`ocms_remember` 记录时，对 `decision + rationale` 调 OpenClaw 的 memory embedding provider（`getMemoryEmbeddingProvider` → `embedBatch`）生成向量，存进 chain.json 的 node。
+- **检索**：`ocms_recall(query)` 对 query 调 `embedQuery` 得 query 向量，与**当前生效决策**的 embedding 做余弦相似度，取 top-k。
+- **复用 OpenClaw embedding**：provider + model + key 都从 `api.config` 的 `memorySearch` 读取，用户零重复配置。
+- **降级**：未配置 embedding 时，退化为关键词匹配 + 因果链过滤。
 
 #### 决策正文（decision-<id>.md）
 
@@ -126,11 +136,11 @@ ocms 相对 dsh-mesync 的两个跃迁：
 
 ### 3.2 认知（Cognition）→ Markdown
 
-认知 = Agent「世界是怎么运作的」知识/方法论。自由文本，存 `.openclaw/.ocms/cognition/*.md`，由主 agent 惰性生成/维护，OpenClaw `memory_search` 检索。
+认知 = Agent「世界是怎么运作的」知识/方法论。自由文本，存 `.openclaw/agents/<agent-id>/.ocms/cognition/*.md`，由主 agent 惰性生成/维护，OpenClaw `memory_search` 检索。
 
 ### 3.3 品味（Taste）→ Markdown
 
-品味 = 用户/Agent 的审美、偏好、判断倾向。存 `.openclaw/.ocms/taste/*.md`，同样 `memory_search` 检索。
+品味 = 用户/Agent 的审美、偏好、判断倾向。存 `.openclaw/agents/<agent-id>/.ocms/taste/*.md`，同样 `memory_search` 检索。
 
 ---
 
@@ -185,10 +195,12 @@ openclaw-mesync/
 │   ├── config.ts             # 配置（maxContextDecisions）
 │   ├── store/
 │   │   ├── paths.ts          # 数据路径解析（.openclaw/agents/<agent-id>/.ocms/）
-│   │   ├── chain.ts          # chain.json 读写 + 链表操作
+│   │   ├── chain.ts          # chain.json 读写 + 链表操作 + 向量检索
 │   │   ├── decision.ts       # 决策 md 读写
 │   │   ├── templates.ts      # 模板管理（ensure/load）
 │   │   └── index.ts
+│   ├── embedding/
+│   │   └── index.ts          # 复用 OpenClaw memory embedding provider
 │   ├── tools/
 │   │   └── index.ts          # ocms_recall / recall_detail / remember / chain
 │   └── hooks/
@@ -212,7 +224,7 @@ openclaw-mesync/
 ### ocms 的增量
 
 - **存储换皮**：SQLite → Markdown + JSON 链拓扑（符合 OpenClaw 生态）
-- **向量检索**：自建 embedding → OpenClaw 原生 `memory_search`
+- **向量检索**：自建 embedding 列 → 复用 OpenClaw memory embedding provider（`getMemoryEmbeddingProvider`），embedding 存 chain.json
 - **宿主 API 换皮**：Cordis 事件 → OpenClaw 类型化 hook（`api.on`）
 - **升维语义**：项目 → Agent 本体
 
@@ -223,6 +235,5 @@ openclaw-mesync/
 - [x] 数据落盘路径：`.openclaw/agents/<agent-id>/.ocms/`
 - [x] config：只保留 `maxContextDecisions`，插件 id `ocms`
 - [x] 存储方式：Markdown 内容 + JSON 链拓扑（一条链一个文件夹）
-- [x] 向量检索：交给 OpenClaw 原生 memory_search
+- [x] 向量检索：路线 2 + 方案 B（embedding 存 chain.json，复用 OpenClaw memory embedding provider）
 - [x] 提取机制：skill 注入 + 主 agent 自行提取（复用 dsh-mesync templates 升维）
-- [ ] 决策 md 如何纳入 memory_search（extraPaths 配置 or 主动索引）

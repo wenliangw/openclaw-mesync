@@ -69,11 +69,31 @@ export function registerHooks({ api, ocmsConfig }: RegisterHooksParams): void {
       const eventIndex = loadEventIndex(agentDir)
       const openEvents = listOpenEvents(eventIndex).slice(0, maxContextDecisions)
       if (openEvents.length > 0) {
-        const lines = openEvents.map((e) => {
-          const mark = e.status === 'asked' ? '❓待确认' : '🔵进行中'
-          return `- [${e.id}] ${mark} · ${e.title}`
-        })
-        sections.push('## 🔮 ocms 进行中事件（对话连续性）\n' + lines.join('\n') + '\n\n> 这些是还未聊完的话题。若本次对话没有延续它们，话题转向结束后应主动询问用户是否继续（详见事件 skill）。')
+        // 区分两种状态，动作不同：
+        //   open（只开不合，可能因对话突然中断）→ 应主动询问用户是否继续
+        //   asked（已问过）→ 不再重复问，等用户主动提
+        const pending = openEvents.filter((e) => e.status === 'open')
+        const asked = openEvents.filter((e) => e.status === 'asked')
+
+        const lines: string[] = []
+        if (pending.length > 0) {
+          lines.push('**待接续（open，需主动询问）**：')
+          for (const e of pending) lines.push(`- [${e.id}] ${e.title}`)
+        }
+        if (asked.length > 0) {
+          if (lines.length) lines.push('')
+          lines.push('**已询问过（asked，不重复问）**：')
+          for (const e of asked) lines.push(`- [${e.id}] ${e.title}`)
+        }
+
+        const guidance = [
+          '> 以上是还未聊完的话题。',
+          '> - **open** 状态：对话可能突然中断，只开未合。本次开场时，应**主动询问用户**「上次的 X 话题是否继续」。',
+          '> - **asked** 状态：已经问过用户了，**不再重复询问**，等用户主动提。',
+          '> - 用户回应后，用 ocms_event 更新状态（继续→open 接着聊；不聊了→closed；沉默→dormant 沉底）。',
+        ].join('\n')
+
+        sections.push('## 🔮 ocms 进行中事件（对话连续性）\n' + lines.join('\n') + '\n\n' + guidance)
       }
 
       // 3. 注入总纲（始终注入，ocms 的设计基础）

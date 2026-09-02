@@ -10,6 +10,11 @@
       "maxContextDecisions": {
         "type": "number",
         "description": "注入上下文时最多带几条决策（默认 5）。"
+      },
+      "agents": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "启用 ocms 的 agent id 白名单。空数组 = 所有 agent（默认）。"
       }
     }
   },
@@ -17,6 +22,15 @@
     "allowConversationAccess": true
   },
   "contracts": {
-    "tools": ["ocms_recall", "ocms_recall_detail", "ocms_remember", "ocms_chain"]
+    "tools": [
+      "ocms_recall",
+      "ocms_recall_detail",
+      "ocms_remember",
+      "ocms_chain",
+      "ocms_event",
+      "ocms_event_list",
+      "ocms_event_recall",
+      "ocms_event_detail"
+    ]
   }
 }

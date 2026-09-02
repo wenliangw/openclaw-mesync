@@ -21,6 +21,11 @@ export default definePluginEntry({
         type: 'number',
         description: '注入上下文时最多带几条决策（默认 5）。',
       },
+      agents: {
+        type: 'array',
+        items: { type: 'string' },
+        description: '启用 ocms 的 agent id 白名单。空数组 = 所有 agent（默认）。',
+      },
     },
   }),
   register(api) {
@@ -28,6 +33,7 @@ export default definePluginEntry({
     const raw = (api.pluginConfig ?? {}) as Partial<OcmsConfig>
     const ocmsConfig: OcmsConfig = {
       maxContextDecisions: raw.maxContextDecisions ?? DEFAULT_CONFIG.maxContextDecisions,
+      agents: raw.agents ?? DEFAULT_CONFIG.agents,
     }
 
     // 注册工具（factory 形式，从 toolContext 拿 agentDir）

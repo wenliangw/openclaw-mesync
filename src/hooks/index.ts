@@ -18,6 +18,7 @@ import {
   listOpenEvents,
 } from '../store/index.js'
 import type { OcmsConfig } from '../config.js'
+import { isAgentEnabled } from '../config.js'
 
 interface RegisterHooksParams {
   api: OpenClawPluginApi
@@ -31,12 +32,14 @@ function formatActiveDecision(agentDir: string, chainName: string, node: any): s
 }
 
 export function registerHooks({ api, ocmsConfig }: RegisterHooksParams): void {
-  const { maxContextDecisions } = ocmsConfig
+  const { maxContextDecisions, agents } = ocmsConfig
 
   // ---- before_prompt_build：初始化 + 注入总纲 + 当前生效决策 ----
   api.on('before_prompt_build', async (_event, ctx) => {
     const agentId = ctx?.agentId
     if (!agentId) return
+    // per-agent 白名单：不在名单内的 agent 跳过（agents 为空 = 全部）
+    if (!isAgentEnabled(agents, agentId)) return
 
     try {
       const agentDir = api.runtime.agent.resolveAgentDir(api.config, agentId)
@@ -115,6 +118,7 @@ export function registerHooks({ api, ocmsConfig }: RegisterHooksParams): void {
     const success = event?.success ?? false
     const agentId = ctx?.agentId
     if (!success || !agentId) return
+    if (!isAgentEnabled(agents, agentId)) return
 
     // 不做自动提取。提取由「总纲 skill」驱动，主 agent 在对话中自行判断
     // 何时调 ocms_remember / 写 cognition / 写 taste。

@@ -40,8 +40,16 @@ function decisionTitle(md: string, fallback: string): string {
 export function buildOcmsToolFactory() {
   return (ctx: OpenClawPluginToolContext): AnyAgentTool[] | null => {
     const agentDir = ctx.agentDir ?? null
+    const agentId = ctx.agentId ?? null
     const config: OpenClawConfig | undefined = ctx.config ?? ctx.runtimeConfig ?? ctx.getRuntimeConfig?.()
     if (!agentDir) return null
+
+    // per-agent 白名单：从插件 config 读 agents，空 = 全部启用
+    const agentAllowlist: string[] | undefined =
+      (config as any)?.plugins?.entries?.ocms?.config?.agents ?? (config as any)?.plugins?.entries?.['openclaw-mesync']?.config?.agents
+    if (agentAllowlist && agentAllowlist.length > 0 && agentId && !agentAllowlist.includes(agentId)) {
+      return null
+    }
 
     // ---- ocms_recall — 向量检索当前生效的决策摘要 ----
     const recall: AnyAgentTool = {

@@ -70,14 +70,14 @@ export function registerHooks({ api, ocmsConfig }: RegisterHooksParams): void {
       const openEvents = listOpenEvents(eventIndex).slice(0, maxContextDecisions)
       if (openEvents.length > 0) {
         // 区分两种状态，动作不同：
-        //   open（只开不合，可能因对话突然中断）→ 应主动询问用户是否继续
+        //   open（只开不合，可能因对话突然中断/被迫重启）→ 直接延续，不询问
         //   asked（已问过）→ 不再重复问，等用户主动提
         const pending = openEvents.filter((e) => e.status === 'open')
         const asked = openEvents.filter((e) => e.status === 'asked')
 
         const lines: string[] = []
         if (pending.length > 0) {
-          lines.push('**待接续（open，需主动询问）**：')
+          lines.push('**待接续（open，直接延续）**：')
           for (const e of pending) lines.push(`- [${e.id}] ${e.title}`)
         }
         if (asked.length > 0) {
@@ -88,9 +88,9 @@ export function registerHooks({ api, ocmsConfig }: RegisterHooksParams): void {
 
         const guidance = [
           '> 以上是还未聊完的话题。',
-          '> - **open** 状态：对话可能突然中断，只开未合。本次开场时，应**主动询问用户**「上次的 X 话题是否继续」。',
+          '> - **open** 状态：对话可能突然中断或被迫重启（如 /new）。本次开场时，**直接带出上下文自然延续**（如「接着上次的 X，我们继续…」），**不要询问**「要不要继续」。',
           '> - **asked** 状态：已经问过用户了，**不再重复询问**，等用户主动提。',
-          '> - 用户回应后，用 ocms_event 更新状态（继续→open 接着聊；不聊了→closed；沉默→dormant 沉底）。',
+          '> - 延续过程中有进展时，用 ocms_event 更新；聊完时更新为 closed。',
         ].join('\n')
 
         sections.push('## 🔮 ocms 进行中事件（对话连续性）\n' + lines.join('\n') + '\n\n' + guidance)

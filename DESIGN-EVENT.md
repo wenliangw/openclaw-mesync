@@ -211,7 +211,7 @@ skill 引导 Agent 在沉淀记忆时完成三件事：
 ## 6. 事件层存储架构
 
 ```
-.openclaw/agents/<agent-id>/.ocms/
+<agentDir>/.ocms/
 ├── events/                         # 新增：事件层
 │   ├── index.json                  # 事件索引（状态/层级/关系/指针，类似 chain.json 的角色）
 │   └── event-<id>.md               # 事件摘要正文（Markdown，可被 memory_search 检索）

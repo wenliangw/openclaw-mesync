@@ -37,10 +37,12 @@ ocms 相对 dsh-mesync 的两个跃迁：
 
 ## 3. 存储架构
 
-数据落盘根目录：`.openclaw/agents/<agent-id>/.ocms/`（ocms 面向 Agent 本体，不同 agent 记忆隔离）
+数据落盘根目录：`<agentDir>/.ocms/`（ocms 面向 Agent 本体，不同 agent 记忆隔离）。
+
+`agentDir` 由 OpenClaw 的 `api.runtime.agent.resolveAgentDir(config, agentId)` 返回（通常为 `~/.openclaw/agents/<agent-id>/agent/`），ocms 不硬编码具体路径，一律以该函数返回值为准。
 
 ```
-.openclaw/agents/<agent-id>/.ocms/
+<agentDir>/.ocms/
 ├── decisions/                      # 所有决策
 │   ├── <chain-name>/               # 一条链 = 一个文件夹
 │   │   ├── chain.json              # 链拓扑（JSON 数组，链表结构）
@@ -136,11 +138,11 @@ ocms 相对 dsh-mesync 的两个跃迁：
 
 ### 3.2 认知（Cognition）→ Markdown
 
-认知 = Agent「世界是怎么运作的」知识/方法论。自由文本，存 `.openclaw/agents/<agent-id>/.ocms/cognition/*.md`，由主 agent 惰性生成/维护，OpenClaw `memory_search` 检索。
+认知 = Agent「世界是怎么运作的」知识/方法论。自由文本，存 `<agentDir>/.ocms/cognition/*.md`，由主 agent 惰性生成/维护，OpenClaw `memory_search` 检索。
 
 ### 3.3 品味（Taste）→ Markdown
 
-品味 = 用户/Agent 的审美、偏好、判断倾向。存 `.openclaw/agents/<agent-id>/.ocms/taste/*.md`，同样 `memory_search` 检索。
+品味 = 用户/Agent 的审美、偏好、判断倾向。存 `<agentDir>/.ocms/taste/*.md`，同样 `memory_search` 检索。
 
 ---
 
@@ -194,7 +196,7 @@ openclaw-mesync/
 │   ├── index.ts              # 插件入口（definePluginEntry）
 │   ├── config.ts             # 配置（maxContextDecisions）
 │   ├── store/
-│   │   ├── paths.ts          # 数据路径解析（.openclaw/agents/<agent-id>/.ocms/）
+│   │   ├── paths.ts          # 数据路径解析（<agentDir>/.ocms/）
 │   │   ├── chain.ts          # chain.json 读写 + 链表操作 + 向量检索
 │   │   ├── decision.ts       # 决策 md 读写
 │   │   ├── templates.ts      # 模板管理（ensure/load）
@@ -232,7 +234,7 @@ openclaw-mesync/
 
 ## 8. 待定 / 下一步
 
-- [x] 数据落盘路径：`.openclaw/agents/<agent-id>/.ocms/`
+- [x] 数据落盘路径：`<agentDir>/.ocms/`（agentDir 由 resolveAgentDir 返回）
 - [x] config：只保留 `maxContextDecisions`，插件 id `ocms`
 - [x] 存储方式：Markdown 内容 + JSON 链拓扑（一条链一个文件夹）
 - [x] 向量检索：路线 2 + 方案 B（embedding 存 chain.json，复用 OpenClaw memory embedding provider）

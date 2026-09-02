@@ -39,7 +39,7 @@ function decisionTitle(md: string, fallback: string): string {
 /** 工具 factory：从 toolContext 解析 agentDir + config，构建所有 ocms 工具 */
 export function buildOcmsToolFactory() {
   return (ctx: OpenClawPluginToolContext): AnyAgentTool[] | null => {
-    const agentDir = ctx.agentDir ?? null
+    const agentDir = ctx.workspaceDir ?? ctx.agentDir ?? null
     const agentId = ctx.agentId ?? null
     const config: OpenClawConfig | undefined = ctx.config ?? ctx.runtimeConfig ?? ctx.getRuntimeConfig?.()
     if (!agentDir) return null

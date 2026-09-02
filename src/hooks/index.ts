@@ -42,7 +42,7 @@ export function registerHooks({ api, ocmsConfig }: RegisterHooksParams): void {
     if (!isAgentEnabled(agents, agentId)) return
 
     try {
-      const agentDir = api.runtime.agent.resolveAgentDir(api.config, agentId)
+      const agentDir = api.runtime.agent.resolveAgentWorkspaceDir(api.config, agentId)
 
       // 首次初始化：数据目录 + 模板
       ensureDataDirs(agentDir)

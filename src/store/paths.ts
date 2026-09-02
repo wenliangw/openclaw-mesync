@@ -1,8 +1,8 @@
 // store/paths — 数据路径解析
 //
-// 数据落盘根目录：<agentDir>/.ocms/，其中 agentDir 由 OpenClaw 的
-// api.runtime.agent.resolveAgentDir(config, agentId) 返回。
-// ocms 面向 Agent 本体，不同 agent 的记忆隔离，各落在自己 agent 目录下。
+// 数据落盘根目录：<workspaceDir>/.ocms/，其中 workspaceDir 由 OpenClaw 的
+// api.runtime.agent.resolveAgentWorkspaceDir(config, agentId) 返回（即 agent 的 workspace）。
+// ocms 面向 Agent 本体，不同 agent 的记忆隔离，各落在自己 workspace 目录下。
 
 import * as path from 'node:path'
 

@@ -6,7 +6,7 @@ ocms（openclaw-mesync）是运行在 OpenClaw 里的 **Agent 级记忆插件**�
 
 ## 记忆模型：四块内容，各管一件事
 
-**文件位置约定（重要）**：ocms 的所有文件都存放在**当前 Agent 目录下的 `.ocms/` 目录**里（具体路径由 ocms 用 `resolveAgentDir` 解析得到，通常是 `~/.openclaw/agents/<agent-id>/agent/.ocms/`）。下文提到的 `cognition/xxx.md`、`taste/xxx.md`、`decisions/<链名>/`、`events/`，都在这个根目录下。用 `read` 工具读这些文件时，请用完整路径。
+**文件位置约定（重要）**：ocms 的所有文件都存放在**当前 Agent 的 workspace 目录下的 `.ocms/` 目录**里（具体路径由 ocms 用 `resolveAgentWorkspaceDir` 解析得到，通常是 `~/.openclaw/workspace-<agent-id>/.ocms/`）。下文提到的 `cognition/xxx.md`、`taste/xxx.md`、`decisions/<链名>/`、`events/`，都在这个根目录下。用 `read` 工具读这些文件时，请用完整路径。
 
 ocms 的记忆由四部分组成。**判断一条信息属于哪块，用各自的「判断标准」，四者不互斥——一条信息可以同时属于多块，不要四选一。**
 

@@ -16,6 +16,8 @@ export const DECISION_RULE_FILE = '.ocms/rules/_sync_decision.rule.md'
 export const DECISION_SKILL_FILE = '.ocms/skills/_sync_decision.skill.md'
 export const TASTE_SKILL_FILE = '.ocms/skills/_sync_taste.skill.md'
 export const COGNITION_SKILL_FILE = '.ocms/skills/_sync_cognition.skill.md'
+export const EVENT_RULE_FILE = '.ocms/rules/_sync_event.rule.md'
+export const EVENT_SKILL_FILE = '.ocms/skills/_sync_event.skill.md'
 
 /** 内置模板目录（dist/templates/） */
 function templateDir(): string {
@@ -65,6 +67,8 @@ export function ensureTemplates(agentDir: string): void {
   ensureTemplateFile(agentDir, DECISION_SKILL_FILE, 'skills/_sync_decision.skill.md')
   ensureTemplateFile(agentDir, TASTE_SKILL_FILE, 'skills/_sync_taste.skill.md')
   ensureTemplateFile(agentDir, COGNITION_SKILL_FILE, 'skills/_sync_cognition.skill.md')
+  ensureTemplateFile(agentDir, EVENT_RULE_FILE, 'rules/_sync_event.rule.md')
+  ensureTemplateFile(agentDir, EVENT_SKILL_FILE, 'skills/_sync_event.skill.md')
 }
 
 /** 读取总纲（始终注入的内容） */
@@ -75,7 +79,7 @@ export function loadStrategySkill(agentDir: string): string {
 /** 确保数据目录结构存在 */
 export function ensureDataDirs(agentDir: string): void {
   const dataDir = resolveDataDir(agentDir)
-  for (const sub of ['decisions', 'cognition', 'taste', 'skills', 'rules']) {
+  for (const sub of ['decisions', 'cognition', 'taste', 'events', 'skills', 'rules']) {
     const d = path.join(dataDir, sub)
     if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true })
   }

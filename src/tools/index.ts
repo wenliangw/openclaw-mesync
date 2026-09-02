@@ -19,6 +19,14 @@ import {
   searchDecisionsByVector,
   readDecisionMarkdown,
   writeDecisionMarkdown,
+  loadEventIndex,
+  findEvent,
+  upsertEvent,
+  setEventStatus,
+  listOpenEvents,
+  searchEventsByVector,
+  readEventMarkdown,
+  writeEventMarkdown,
 } from '../store/index.js'
 import { embedQuery, embedDocument } from '../embedding/index.js'
 import type { DecisionContent } from '../store/index.js'
@@ -241,6 +249,182 @@ export function buildOcmsToolFactory() {
       },
     }
 
-    return [recall, recallDetail, remember, chainTool]
+    // ---- ocms_event — 记录/更新事件 ----------------
+    const eventTool: AnyAgentTool = {
+      name: 'ocms_event',
+      label: 'Record event',
+      description:
+        '记录或更新一个事件（对话话题的摘要）。事件解决对话连续性：跨会话接上之前聊过的话题。' +
+        '字段：title（一句话标题）、summary（摘要）、status（open/asked/closed/dormant）、' +
+        'parent（父事件 id，大话题分组用）、produced_decisions（产生的决策 id）、' +
+        'influences（影响的事件 id）、source_refs（指向 memory/*.md 的原始记录）。',
+      parameters: Type.Object({
+        id: Type.Optional(Type.String({ description: '事件 id。留空则自动生成（新建）。' })),
+        title: Type.String({ description: '事件一句话标题（可检索摘要字段）。' }),
+        summary: Type.String({ description: '事件摘要：聊了什么、结论、停在哪。' }),
+        status: Type.Optional(Type.String({ description: '状态：open/asked/closed/dormant（默认 open）。' })),
+        parent: Type.Optional(Type.String({ description: '父事件 id（大话题分组用）。' })),
+        produced_decisions: Type.Optional(Type.String({ description: '产生的决策 id（逗号分隔）。' })),
+        influences: Type.Optional(Type.String({ description: '影响的事件 id（逗号分隔）。' })),
+        source_refs: Type.Optional(Type.String({ description: 'JSON 数组 [{file, anchor}]，指向 memory/*.md。' })),
+      }),
+      async execute(_toolCallId: string, params: unknown): Promise<any> {
+        const args = params as any
+        const id = args.id || `event-${Date.now().toString(36)}`
+        const status = (['open', 'asked', 'closed', 'dormant'].includes(args.status) ? args.status : 'open') as any
+        const fileName = `${id}.md`
+
+        let refs: Array<{ file: string; anchor: string; confidence?: string }> = []
+        try {
+          if (args.source_refs) refs = JSON.parse(args.source_refs)
+        } catch {
+          /* ignore */
+        }
+
+        const produced = args.produced_decisions
+          ? args.produced_decisions.split(',').map((s: string) => s.trim()).filter(Boolean)
+          : []
+        const influences = args.influences
+          ? args.influences.split(',').map((s: string) => s.trim()).filter(Boolean)
+          : []
+
+        // 写事件正文
+        const mdParts = [
+          `# 事件：${args.title}`,
+          '',
+          `- 状态：${status}`,
+          `- 时间：${new Date().toISOString()}`,
+        ]
+        if (refs.length) {
+          mdParts.push('', '## 来源')
+          for (const r of refs) mdParts.push(`- ${r.file}${r.anchor ? `（锚：${r.anchor}）` : ''}`)
+        }
+        mdParts.push('', '## 摘要', '', args.summary)
+        if (produced.length) mdParts.push('', '## 产生的决策', ...produced.map((d: string) => `- ${d}`))
+        if (influences.length) mdParts.push('', '## 影响的事件', ...influences.map((e: string) => `- ${e}`))
+        writeEventMarkdown(agentDir, fileName, mdParts.join('\n'))
+
+        // 趁热生成 embedding
+        let embedding: number[] | null = null
+        if (config) embedding = await embedDocument(config, `${args.title} ${args.summary}`)
+
+        // 更新索引
+        upsertEvent(agentDir, {
+          id,
+          markdown: fileName,
+          title: args.title,
+          summary: args.summary,
+          status,
+          parent: args.parent || null,
+          produced_decisions: produced,
+          influences,
+          source_refs: refs,
+          embedding,
+        })
+
+        return `✅ Event recorded: **${args.title}** (${id}, ${status})${embedding ? ' [embedded]' : ''}`
+      },
+    }
+
+    // ---- ocms_event_list — 列出进行中事件（对话连续性） ----------------
+    const eventListTool: AnyAgentTool = {
+      name: 'ocms_event_list',
+      label: 'List open events',
+      description:
+        '列出最近的「进行中」事件（open 或 asked）。用于接续未完成话题：话题转向后，' +
+        '先查这里看有哪些话题还没聊完，需要确认是否继续。',
+      parameters: Type.Object({
+        limit: Type.Optional(Type.Number({ description: '最多返回几条（默认 10）。' })),
+      }),
+      async execute(_toolCallId: string, params: unknown): Promise<any> {
+        const p = params as { limit?: number }
+        const index = loadEventIndex(agentDir)
+        const open = listOpenEvents(index).slice(0, p.limit ?? 10)
+        if (open.length === 0) return 'No open events.'
+        const parts = ['## Open Events']
+        for (const e of open) {
+          const mark = e.status === 'asked' ? '❓' : '🔵'
+          parts.push(`${mark} ${e.id} [${e.status}] · **${e.title}**`)
+          if (e.summary) parts.push(`  ${e.summary.slice(0, 120)}`)
+        }
+        return parts.join('\n')
+      },
+    }
+
+    // ---- ocms_event_recall — 向量检索历史事件（唤起沉底事件） ----------------
+    const eventRecallTool: AnyAgentTool = {
+      name: 'ocms_event_recall',
+      label: 'Recall events',
+      description:
+        '语义检索历史事件（包括已沉底的事件）。用户主动聊起某个久远话题时，用它找回相关事件。' +
+        '需要看某事件完整内容，用 ocms_event_detail。',
+      parameters: Type.Object({
+        query: Type.String({ description: '要匹配的话题描述。' }),
+        limit: Type.Optional(Type.Number({ description: '最多返回几条（默认 5）。' })),
+      }),
+      async execute(_toolCallId: string, params: unknown): Promise<any> {
+        const p = params as { query: string; limit?: number }
+        const limit = p.limit ?? 5
+        const index = loadEventIndex(agentDir)
+
+        // 向量检索
+        if (config) {
+          const queryVec = await embedQuery(config, p.query)
+          if (queryVec) {
+            const scored = searchEventsByVector(index, queryVec, limit)
+            if (scored.length > 0) {
+              const parts = ['## Events (semantic)']
+              for (const s of scored) {
+                parts.push(`- ${s.event.id} [${s.event.status}] · **${s.event.title}** (${(s.score * 100).toFixed(0)}%)`)
+              }
+              parts.push('', 'Use ocms_event_detail to read the full summary.')
+              return parts.join('\n')
+            }
+          }
+        }
+
+        // 降级：关键词匹配
+        const q = p.query.toLowerCase()
+        const hits = index.events
+          .filter((e) => (e.title + ' ' + e.summary).toLowerCase().includes(q))
+          .slice(0, limit)
+        if (hits.length === 0) return 'No matching events found.'
+        const parts = ['## Events (keyword)']
+        for (const e of hits) parts.push(`- ${e.id} [${e.status}] · **${e.title}**`)
+        return parts.join('\n')
+      },
+    }
+
+    // ---- ocms_event_detail — 单条事件完整内容 ----------------
+    const eventDetailTool: AnyAgentTool = {
+      name: 'ocms_event_detail',
+      label: 'Read event detail',
+      description: '读取单条事件的完整摘要、关系（产生的决策 / 影响的事件）和来源指针。',
+      parameters: Type.Object({
+        id: Type.String({ description: '事件 id。' }),
+      }),
+      async execute(_toolCallId: string, params: unknown): Promise<any> {
+        const p = params as { id: string }
+        const index = loadEventIndex(agentDir)
+        const event = findEvent(index, p.id)
+        if (!event) return `No event found: ${p.id}`
+
+        const md = readEventMarkdown(agentDir, event.markdown)
+        const parts = [md || `# 事件：${event.title}\n\n${event.summary}`, '']
+        parts.push('## 关系')
+        parts.push(`- status: ${event.status}`)
+        if (event.parent) parts.push(`- parent: ${event.parent}`)
+        if (event.children.length) parts.push(`- children: ${event.children.join(', ')}`)
+        if (event.produced_decisions.length) parts.push(`- 产生的决策: ${event.produced_decisions.join(', ')}`)
+        if (event.influences.length) parts.push(`- 影响的事件: ${event.influences.join(', ')}`)
+        if (event.source_refs.length) {
+          parts.push('## 来源')
+          for (const r of event.source_refs) parts.push(`- ${r.file}${r.anchor ? `（锚：${r.anchor}）` : ''}`)
+        }
+        return parts.join('\n')
+      },
+    }
+
+    return [recall, recallDetail, remember, chainTool, eventTool, eventListTool, eventRecallTool, eventDetailTool]
   }
 }

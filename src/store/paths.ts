@@ -29,3 +29,13 @@ export function resolveCognitionDir(agentDir: string): string {
 export function resolveTasteDir(agentDir: string): string {
   return path.join(resolveDataDir(agentDir), 'taste')
 }
+
+/** 事件目录 */
+export function resolveEventsDir(agentDir: string): string {
+  return path.join(resolveDataDir(agentDir), 'events')
+}
+
+/** 事件索引文件 */
+export function resolveEventsIndexFile(agentDir: string): string {
+  return path.join(resolveEventsDir(agentDir), 'index.json')
+}

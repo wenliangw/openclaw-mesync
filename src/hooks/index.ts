@@ -14,6 +14,8 @@ import {
   ensureTemplates,
   ensureDataDirs,
   loadStrategySkill,
+  loadEventIndex,
+  listOpenEvents,
 } from '../store/index.js'
 import type { OcmsConfig } from '../config.js'
 
@@ -63,7 +65,18 @@ export function registerHooks({ api, ocmsConfig }: RegisterHooksParams): void {
         sections.push('## 🔮 ocms 当前生效决策\n' + decisions.join('\n'))
       }
 
-      // 2. 注入总纲（始终注入，ocms 的设计基础）
+      // 2. 注入当前生效事件（对话连续性：让 Agent 知道「聊到哪了」）
+      const eventIndex = loadEventIndex(agentDir)
+      const openEvents = listOpenEvents(eventIndex).slice(0, maxContextDecisions)
+      if (openEvents.length > 0) {
+        const lines = openEvents.map((e) => {
+          const mark = e.status === 'asked' ? '❓待确认' : '🔵进行中'
+          return `- [${e.id}] ${mark} · ${e.title}`
+        })
+        sections.push('## 🔮 ocms 进行中事件（对话连续性）\n' + lines.join('\n') + '\n\n> 这些是还未聊完的话题。若本次对话没有延续它们，话题转向结束后应主动询问用户是否继续（详见事件 skill）。')
+      }
+
+      // 3. 注入总纲（始终注入，ocms 的设计基础）
       const strategy = loadStrategySkill(agentDir)
       if (strategy.trim()) {
         sections.push(strategy.trim())

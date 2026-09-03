@@ -1,12 +1,14 @@
 // embedding/index — 复用 OpenClaw 的 memory embedding provider
 //
 // 思路（路线 2）：
-// - 读 OpenClaw 配置里的 memorySearch.provider + model
+// - 探测 OpenClaw 的记忆向量后端插件（memory-lancedb 等）是否已启用
+// - 从该插件的 config.embedding 读 provider + model（用户零重复配置）
 // - getMemoryEmbeddingProvider(id) 拿 adapter
 // - adapter.create({ config, provider, model }) 实例化出 embedQuery/embedBatch
 // - key 全部来自 OpenClaw 配置，用户零重复配置
 //
-// 降级：未配置 embedding 时返回 null，调用方退化为关键词匹配。
+// 语义检索是必须能力，向量检索是可选的优化：未启用向量插件时返回 null，
+// 调用方退化为「关键词粗筛 + 主 Agent 语义精判」，而不是放弃语义检索。
 
 import type { OpenClawConfig } from 'openclaw/plugin-sdk/plugin-entry'
 import {
@@ -17,12 +19,25 @@ import {
 let cachedProvider: MemoryEmbeddingProvider | null = null
 let cachedKey: string | null = null
 
-/** 从 OpenClaw 配置解析 memorySearch 的 provider id + model */
+/**
+ * 从 OpenClaw 配置解析 embedding 的 provider id + model。
+ *
+ * OpenClaw 的记忆向量后端是「记忆插件」（memory-lancedb 等），通过
+ * plugins.slots.memory 选定、plugins.entries[<slot>].config.embedding 配置。
+ * 未启用任何向量记忆插件时返回 null（调用方降级）。
+ */
 function resolveMemorySearch(config: OpenClawConfig): { provider: string; model: string } | null {
-  const ms = (config as any)?.agents?.defaults?.memorySearch
-  if (!ms) return null
-  const provider = ms.provider
-  const model = ms.model
+  const plugins = (config as any)?.plugins
+  if (!plugins) return null
+
+  const slot = plugins?.slots?.memory
+  if (!slot || typeof slot !== 'string') return null
+
+  const embedding = plugins?.entries?.[slot]?.config?.embedding
+  if (!embedding) return null
+
+  const provider = embedding.provider
+  const model = embedding.model
   if (!provider || !model) return null
   return { provider, model }
 }

@@ -100,6 +100,7 @@ export function buildOcmsToolFactory() {
         }
 
         // 降级 / 浏览路径：关键词匹配 + 因果链过滤
+        // 语义精判交给主 Agent（工具只给候选，不自己判语义）。
         const parts: string[] = []
         let count = 0
         for (const name of chainNames) {
@@ -122,7 +123,10 @@ export function buildOcmsToolFactory() {
         }
 
         if (parts.length === 0) return 'No active decisions found.'
-        parts.unshift('## Active Decisions')
+        parts.unshift('## Active Decisions (keyword)')
+        if (p.query) {
+          parts.push('', '> 当前为关键词匹配（未启用向量检索）。如需语义召回，可开启 OpenClaw 的向量记忆插件（memory-lancedb）。多组关键词可提高召回率。')
+        }
         parts.push('', 'Use ocms_recall_detail to read the full rationale of a specific decision.')
         return parts.join('\n')
       },
@@ -391,7 +395,7 @@ export function buildOcmsToolFactory() {
           }
         }
 
-        // 降级：关键词匹配
+        // 降级：关键词匹配（语义精判交给主 Agent）
         const q = p.query.toLowerCase()
         const hits = index.events
           .filter((e) => (e.title + ' ' + e.summary).toLowerCase().includes(q))
@@ -399,6 +403,7 @@ export function buildOcmsToolFactory() {
         if (hits.length === 0) return 'No matching events found.'
         const parts = ['## Events (keyword)']
         for (const e of hits) parts.push(`- ${e.id} [${e.status}] · **${e.title}**`)
+        parts.push('', '> 当前为关键词匹配（未启用向量检索）。如需语义召回，可开启 OpenClaw 的向量记忆插件（memory-lancedb）。多组关键词可提高召回率。')
         return parts.join('\n')
       },
     }

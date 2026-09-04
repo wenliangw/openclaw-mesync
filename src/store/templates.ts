@@ -18,6 +18,7 @@ export const TASTE_SKILL_FILE = '.ocms/skills/_sync_taste.skill.md'
 export const COGNITION_SKILL_FILE = '.ocms/skills/_sync_cognition.skill.md'
 export const EVENT_RULE_FILE = '.ocms/rules/_sync_event.rule.md'
 export const EVENT_SKILL_FILE = '.ocms/skills/_sync_event.skill.md'
+export const REVIEW_SKILL_FILE = '.ocms/skills/_sync_review.skill.md'
 
 /** 内置模板目录（dist/templates/） */
 function templateDir(): string {
@@ -69,11 +70,17 @@ export function ensureTemplates(agentDir: string): void {
   ensureTemplateFile(agentDir, COGNITION_SKILL_FILE, 'skills/_sync_cognition.skill.md')
   ensureTemplateFile(agentDir, EVENT_RULE_FILE, 'rules/_sync_event.rule.md')
   ensureTemplateFile(agentDir, EVENT_SKILL_FILE, 'skills/_sync_event.skill.md')
+  ensureTemplateFile(agentDir, REVIEW_SKILL_FILE, 'skills/_sync_review.skill.md')
 }
 
 /** 读取总纲（始终注入的内容） */
 export function loadStrategySkill(agentDir: string): string {
   return loadTemplate(agentDir, STRATEGY_SKILL_FILE, 'skills/_sync_strategy.skill.md')
+}
+
+/** 读取收尾回顾心法（before_agent_finalize 时注入，落盘提示词在 skill 文件里） */
+export function loadReviewSkill(agentDir: string): string {
+  return loadTemplate(agentDir, REVIEW_SKILL_FILE, 'skills/_sync_review.skill.md')
 }
 
 /** 确保数据目录结构存在 */

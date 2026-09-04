@@ -1,9 +1,11 @@
 // hooks/index — ocms 的 hook 层
 // before_prompt_build：首次初始化 + 注入总纲 + 当前生效决策
-// agent_end：轻量提示（skill 驱动，主 agent 自行提取）
+// before_agent_finalize：收尾回顾兜底（revise 一轮，按回顾心法补漏落盘）
+// agent_end：轻量调试日志
 //
 // 宿主 API：OpenClaw 类型化 hook（api.on）。
 // 提取机制复用 dsh-mesync：不后台 loop，而是「skill 注入 + 主 agent 自行提取」。
+// 回顾心法内容在 _sync_review.skill.md（提示词不硬编码在代码里）。
 
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk/plugin-entry'
 import {
@@ -14,6 +16,7 @@ import {
   ensureTemplates,
   ensureDataDirs,
   loadStrategySkill,
+  loadReviewSkill,
   loadEventIndex,
   listOpenEvents,
 } from '../store/index.js'
@@ -113,16 +116,51 @@ export function registerHooks({ api, ocmsConfig }: RegisterHooksParams): void {
     }
   })
 
-  // ---- agent_end：轻量提示（skill 驱动，不自己做 LLM 提取） ----
+  // ---- before_agent_finalize：收尾回顾兜底 ----------------
+  // 主模型回复后、正式定稿前，拦截一次，注入「回顾心法」让 harness 再跑一轮。
+  // 这轮模型按 _sync_review.skill.md 的指引，把这一轮漏记的决策/事件/认知/品味补上。
+  // 回顾心法正文在 skill 文件里，这里只注入指向它的引导指令（提示词不硬编码）。
+  api.on('before_agent_finalize', async (event, ctx) => {
+    const agentId = ctx?.agentId
+    if (!agentId) return
+    if (!isAgentEnabled(agents, agentId)) return
+
+    try {
+      const agentDir = api.runtime.agent.resolveAgentWorkspaceDir(api.config, agentId)
+
+      // 读取回顾心法（尊重用户版本；不存在/为空则跳过兜底）
+      const reviewSkill = loadReviewSkill(agentDir)
+      if (!reviewSkill.trim()) return
+
+      // 把回顾心法内容作为 revise 指令注入。harness 会用这条指令再跑一轮模型 pass，
+      // 这轮 pass 里模型会 read 到 .ocms 下的 skill 文件、按心法调 ocms 工具落盘。
+      return {
+        action: 'revise',
+        reason: 'ocms 收尾回顾：按回顾心法补录本轮记忆',
+        retry: {
+          instruction: [
+            '现在进行一轮「记忆收尾回顾」（由 ocms 插件触发，不是用户要求）。',
+            '请先 read 这个心法文件并严格照做：' + agentDir + '/.ocms/skills/_sync_review.skill.md',
+            '',
+            '核心：把这一轮对话里漏记的决策/事件/认知/品味补进 .ocms/，然后静默结束。',
+            '如果没有值得记的内容，什么都不做、不要生成面向用户的新回复。',
+          ].join('\n'),
+          // 只允许一轮回顾，避免 revise 死循环（回顾本身不应再触发回顾）
+          maxAttempts: 1,
+        },
+      }
+    } catch {
+      // 回顾失败不影响主回复
+    }
+  })
+
+  // ---- agent_end：轻量调试日志 ----------------
   api.on('agent_end', async (event, ctx) => {
     const success = event?.success ?? false
     const agentId = ctx?.agentId
     if (!success || !agentId) return
     if (!isAgentEnabled(agents, agentId)) return
 
-    // 不做自动提取。提取由「总纲 skill」驱动，主 agent 在对话中自行判断
-    // 何时调 ocms_remember / 写 cognition / 写 taste。
-    // 这里仅记录调试日志。
     api.logger?.debug?.(`ocms agent_end: turn completed (agentId=${agentId})`)
   })
 }
